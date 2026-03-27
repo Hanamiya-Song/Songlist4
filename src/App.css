@@ -581,9 +581,10 @@ a { color: inherit; }
 .random-list {
   display: flex;
   flex-direction: column;
-  max-height: 200px;
+  max-height: 340px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 
 .random-item {
@@ -616,7 +617,8 @@ a { color: inherit; }
 /* Log area */
 .log-area {
   width: 100%;
-  min-height: 160px;
+  min-height: 200px;
+  max-height: 360px;
   background: #060608;
   color: #a0a0b8;
   border: none;
@@ -626,6 +628,9 @@ a { color: inherit; }
   line-height: 1.7;
   resize: vertical;
   outline: none;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
 }
 
 /* ── Buttons ─────────────────────────────────────────────────────────────────── */
@@ -1098,6 +1103,32 @@ a { color: inherit; }
 /* Form */
 .form-group { display: flex; flex-direction: column; gap: 6px; }
 .form-label { font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); }
+
+/* Type toggle (multi-select) */
+.type-toggle-group {
+  display: flex;
+  gap: 8px;
+}
+
+.type-toggle {
+  flex: 1;
+  padding: 11px 14px;
+  background: var(--bg-3);
+  border: 2px solid var(--border-2);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 14px;
+  font-family: var(--font-body);
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+.type-toggle--active {
+  background: var(--amber-dim);
+  border-color: var(--amber);
+  color: var(--amber);
+}
 
 .text-input {
   width: 100%;

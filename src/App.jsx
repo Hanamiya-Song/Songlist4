@@ -137,6 +137,7 @@ export default function App() {
   const [newSong, setNewSong]       = useState('');
   const [newArtist, setNewArtist]   = useState('');
   const [newStatus, setNewStatus]   = useState('フル');
+  const [newType, setNewType]       = useState([]);
 
   const [setlist, setSetlist]       = useState(() => { try { return JSON.parse(localStorage.getItem('planned_setlist') || '[]'); } catch { return []; } });
   const [currentView, setCurrentView] = useState('music');
@@ -288,7 +289,7 @@ export default function App() {
     let lastY = null;
     const onMove = (e) => {
       const el = e.target instanceof Element ? e.target : e.target?.parentElement;
-      const scrollable = el?.closest('#songListScroll') || el?.closest('#tabContainer') || el?.closest('.modal-body');
+      const scrollable = el?.closest('#songListScroll') || el?.closest('#tabContainer') || el?.closest('.modal-body') || el?.closest('.view--log') || el?.closest('.view--setlist') || el?.closest('.random-list') || el?.closest('.log-area');
       if (!scrollable) { e.preventDefault(); return; }
       if (el?.closest('#songListScroll') && e.touches?.[0]) {
         const sl = el.closest('#songListScroll');
@@ -454,10 +455,10 @@ export default function App() {
 
   const handleAddSong = async () => {
     if (!newSong.trim()) { showToast('曲名を入力してください', 'error'); return; }
-    const res = await callGAS({ action: 'addSong', name: newSong, artist: newArtist, status: newStatus }, true);
+    const res = await callGAS({ action: 'addSong', name: newSong, artist: newArtist, status: newStatus, type: newType.join(',') }, true);
     if (res?.status === 'success') {
       showToast(`「${newSong}」を追加しました`, 'success');
-      setNewSong(''); setNewArtist(''); setNewStatus('フル');
+      setNewSong(''); setNewArtist(''); setNewStatus('フル'); setNewType([]);
       closeModal(null);
       fetchData(true);
     } else {
@@ -481,26 +482,76 @@ export default function App() {
   const downloadSetlistImage = () => {
     if (!logText.trim()) { showToast('ログが空です', 'error'); return; }
     const lines = logText.trim().split('\n').filter(Boolean);
-    const entries = lines.map((l, i) => `${i + 1}.  ${l.replace(/^\d+:\d+(:\d+)?\s+/, '').trim()}`);
+    const maxNum = lines.length;
+    const numDigits = String(maxNum).length;
+
+    const entries = lines.map((l, i) => {
+      const songName = l.replace(/^\d+:\d+(:\d+)?\s+/, '').trim();
+      const matched = songs.find((s) => s.name === songName);
+      return {
+        numStr: String(i + 1).padStart(numDigits, ' ') + '.',
+        name: songName,
+        artist: matched?.artist || '',
+      };
+    });
+
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-    const pad = 64, lh = 52, fs = 28;
-    canvas.width = 1080;
-    canvas.height = pad * 2 + entries.length * lh + 80;
-    // bg
+
+    const PAD   = 72;
+    const FS    = 30;   // 曲名フォントサイズ
+    const FSA   = 20;   // アーティストフォントサイズ
+    const ENTRY_H = 86; // 1エントリあたりの高さ（上下余白広め）
+    const TITLE_H = 100; // タイトルエリア高さ
+
+    canvas.width  = 1080;
+    canvas.height = TITLE_H + PAD / 2 + entries.length * ENTRY_H + PAD;
+
+    // 背景
     ctx.fillStyle = '#0d0d0d';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    // title
-    ctx.font = `bold 36px monospace`;
-    ctx.fillStyle = '#d4a853';
-    ctx.fillText('SET LIST', pad, pad);
-    // lines
-    ctx.font = `${fs}px monospace`;
-    ctx.fillStyle = '#e8e8e8';
-    entries.forEach((t, i) => ctx.fillText(t, pad, pad + 60 + i * lh));
-    const a = document.createElement('a');
+
+    // タイトル
+    ctx.font      = `bold 40px monospace`;
+    ctx.fillStyle = '#c97d2a';
+    ctx.fillText('SET LIST', PAD, 58);
+
+    // 区切り線
+    ctx.strokeStyle = '#2e2e3e';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.moveTo(PAD, TITLE_H - 10);
+    ctx.lineTo(canvas.width - PAD, TITLE_H - 10);
+    ctx.stroke();
+
+    // 番号列の幅を実測
+    ctx.font = `${FS}px monospace`;
+    const numColW = ctx.measureText(String(maxNum) + '.  ').width;
+
+    entries.forEach(({ numStr, name, artist }, i) => {
+      const baseY = TITLE_H + PAD / 2 + i * ENTRY_H;
+
+      // 番号
+      ctx.font      = `${FS}px monospace`;
+      ctx.fillStyle = '#4e4e70';
+      ctx.fillText(numStr, PAD, baseY + FS);
+
+      // 曲名
+      ctx.font      = `${FS}px monospace`;
+      ctx.fillStyle = '#e8e8e8';
+      ctx.fillText(name, PAD + numColW, baseY + FS);
+
+      // アーティスト名
+      if (artist) {
+        ctx.font      = `${FSA}px monospace`;
+        ctx.fillStyle = '#6868a0';
+        ctx.fillText(artist, PAD + numColW, baseY + FS + FSA + 4);
+      }
+    });
+
+    const a    = document.createElement('a');
     a.download = `Setlist_${new Date().toISOString().slice(0, 10)}.png`;
-    a.href = canvas.toDataURL('image/png');
+    a.href     = canvas.toDataURL('image/png');
     a.click();
   };
 
@@ -970,6 +1021,23 @@ export default function App() {
             <option value="ワンコーラス">ワンコーラス</option>
             <option value="２番まで">２番まで</option>
           </select>
+        </div>
+        <div className="form-group">
+          <label className="form-label">カテゴリ（複数選択可）</label>
+          <div className="type-toggle-group">
+            {['カラオケ', '弾き語り'].map((t) => (
+              <button
+                key={t}
+                type="button"
+                className={`type-toggle ${newType.includes(t) ? 'type-toggle--active' : ''}`}
+                onClick={() => setNewType((prev) =>
+                  prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
+                )}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
         </div>
         <button className="action-btn action-btn--primary" onClick={handleAddSong}>
           <Icon.Plus /> Notionに追加
