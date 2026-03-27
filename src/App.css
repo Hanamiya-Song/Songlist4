@@ -486,7 +486,7 @@ a { color: inherit; }
 
 /* ── Setlist view ────────────────────────────────────────────────────────────── */
 .view--setlist {
-  padding: 12px;
+  padding: 24px;
   gap: 10px;
   overflow-y: auto;
 }
