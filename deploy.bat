@@ -1,23 +1,28 @@
 @echo off
-echo ==========================
-echo   Build & Deploy Start
-echo ==========================
-
 cd /d %~dp0
 
-echo.
-echo Å° npm build...
+echo =========================
+echo Build start...
+echo =========================
 call npm run build
 
-echo.
-echo Å° push to GitHub...
-cd dist
+echo =========================
+echo Git add...
+echo =========================
 git add .
-git commit -m "auto deploy"
-git push -f origin main
 
-echo.
-echo ==========================
-echo   Deploy Complete !!
-echo ==========================
+echo =========================
+echo Commit...
+echo =========================
+set msg=deploy %date% %time%
+git commit -m "%msg%"
+
+echo =========================
+echo Push...
+echo =========================
+git push
+
+echo =========================
+echo DEPLOY DONE !!
+echo =========================
 pause

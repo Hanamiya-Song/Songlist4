@@ -1210,3 +1210,15 @@ select.text-input { cursor: pointer; }
 /* ── Misc ────────────────────────────────────────────────────────────────────── */
 ::selection { background: var(--amber-dim); }
 
+/* ランダム20選などのスクロールバーを細く・おしゃれにする */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--accent); /* 紫色などのアクセントカラー */
+  border-radius: 4px;
+}
