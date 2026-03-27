@@ -225,7 +225,7 @@ export default function App() {
     const res = await callGAS({ action: 'checkExternalStart' });
     const serverStart = res?.startTime ? parseInt(res.startTime, 10) : null;
 
-    // サーバ側が停止状態（startTimeなし）なら、端末側も確実に停止へ
+    // サーバ側が停止状態なら端末側も停止
     if (!serverStart) {
       if (isRunningRef.current || startTimeRef.current) {
         isRunningRef.current = false;
@@ -237,7 +237,7 @@ export default function App() {
       return;
     }
 
-    // サーバ側が開始状態なら、差分がある時に同期（開始/再開/端末復帰に強い）
+    // サーバ側が開始状態なら同期
     if (startTimeRef.current !== serverStart) {
       startTimeRef.current = serverStart;
       setStartTime(serverStart);
@@ -245,6 +245,12 @@ export default function App() {
     if (!isRunningRef.current) {
       isRunningRef.current = true;
       setIsRunning(true);
+    }
+
+    // 配信中かつサーバーにログがある時だけ同期（空文字で上書きしない）
+    const logRes = await callGAS({ action: 'getLog' });
+    if (logRes && logRes.log) {
+      setLogText(decodeURIComponent(logRes.log));
     }
   }, [callGAS]);
 
@@ -498,14 +504,64 @@ export default function App() {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
 
-    const PAD   = 72;
-    const FS    = 30;   // 曲名フォントサイズ
-    const FSA   = 20;   // アーティストフォントサイズ
-    const ENTRY_H = 86; // 1エントリあたりの高さ（上下余白広め）
-    const TITLE_H = 100; // タイトルエリア高さ
+    const COL_SIZE  = 20;  // 1列あたりの最大曲数
+    const PAD       = 72;
+    const FS        = 30;
+    const FSA       = 20;
+    const LINE_PAD  = 20;  // エントリ上下の余白
+    const TITLE_H   = 100;
+    const COL_GAP   = 60;
 
-    canvas.width  = 1080;
-    canvas.height = TITLE_H + PAD / 2 + entries.length * ENTRY_H + PAD;
+    const numCols = Math.ceil(entries.length / COL_SIZE);
+
+    // テキスト折り返しヘルパー（最大幅を超えたら次の行へ）
+    const wrapText = (text, maxWidth, font) => {
+      ctx.font = font;
+      const words = text.split('');  // 日本語は1文字ずつ分割
+      const lines = [];
+      let current = '';
+      for (const ch of words) {
+        const test = current + ch;
+        if (ctx.measureText(test).width > maxWidth && current !== '') {
+          lines.push(current);
+          current = ch;
+        } else {
+          current = test;
+        }
+      }
+      if (current) lines.push(current);
+      return lines;
+    };
+
+    // canvas幅を確定してから列幅を計算
+    canvas.width = 1080;
+    const colW   = (canvas.width - PAD * 2 - COL_GAP * (numCols - 1)) / numCols;
+
+    // 番号列幅を実測
+    ctx.font = `${FS}px monospace`;
+    const numColW  = ctx.measureText(String(maxNum) + '.  ').width;
+    const textMaxW = colW - numColW;
+
+    // 各エントリの折り返し行数・高さを事前計算
+    const nameFont   = `${FS}px monospace`;
+    const artistFont = `${FSA}px monospace`;
+    const computed = entries.map(({ numStr, name, artist }) => {
+      const nameLines   = wrapText(name, textMaxW, nameFont);
+      const artistLines = artist ? wrapText(artist, textMaxW, artistFont) : [];
+      const totalH = LINE_PAD
+        + nameLines.length * (FS + 6)
+        + (artistLines.length > 0 ? artistLines.length * (FSA + 4) + 4 : 0)
+        + LINE_PAD;
+      return { numStr, name, artist, nameLines, artistLines, totalH };
+    });
+
+    // 列ごとの合計高さを求めてキャンバス高さを決定
+    const colHeights = Array.from({ length: numCols }, (_, c) =>
+      computed.slice(c * COL_SIZE, (c + 1) * COL_SIZE).reduce((s, e) => s + e.totalH, 0)
+    );
+    const maxColH = Math.max(...colHeights);
+
+    canvas.height = TITLE_H + PAD / 2 + maxColH + PAD;
 
     // 背景
     ctx.fillStyle = '#0d0d0d';
@@ -516,7 +572,7 @@ export default function App() {
     ctx.fillStyle = '#c97d2a';
     ctx.fillText('SET LIST', PAD, 58);
 
-    // 区切り線
+    // タイトル下区切り線
     ctx.strokeStyle = '#2e2e3e';
     ctx.lineWidth   = 1;
     ctx.beginPath();
@@ -524,30 +580,51 @@ export default function App() {
     ctx.lineTo(canvas.width - PAD, TITLE_H - 10);
     ctx.stroke();
 
-    // 番号列の幅を実測
-    ctx.font = `${FS}px monospace`;
-    const numColW = ctx.measureText(String(maxNum) + '.  ').width;
+    // 列区切り線
+    for (let c = 1; c < numCols; c++) {
+      const lineX = PAD + colW * c + COL_GAP * (c - 1) + COL_GAP / 2;
+      ctx.strokeStyle = '#2e2e3e';
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.moveTo(lineX, TITLE_H);
+      ctx.lineTo(lineX, canvas.height - PAD / 2);
+      ctx.stroke();
+    }
 
-    entries.forEach(({ numStr, name, artist }, i) => {
-      const baseY = TITLE_H + PAD / 2 + i * ENTRY_H;
+    // 各列ごとにエントリを描画
+    for (let c = 0; c < numCols; c++) {
+      const colX      = PAD + c * (colW + COL_GAP);
+      const colItems  = computed.slice(c * COL_SIZE, (c + 1) * COL_SIZE);
+      let   curY      = TITLE_H + PAD / 2;
 
-      // 番号
-      ctx.font      = `${FS}px monospace`;
-      ctx.fillStyle = '#4e4e70';
-      ctx.fillText(numStr, PAD, baseY + FS);
+      colItems.forEach(({ numStr, nameLines, artistLines, totalH }) => {
+        const textStartY = curY + LINE_PAD;
 
-      // 曲名
-      ctx.font      = `${FS}px monospace`;
-      ctx.fillStyle = '#e8e8e8';
-      ctx.fillText(name, PAD + numColW, baseY + FS);
+        // 番号（最初の行に揃える）
+        ctx.font      = nameFont;
+        ctx.fillStyle = '#4e4e70';
+        ctx.fillText(numStr, colX, textStartY + FS);
 
-      // アーティスト名
-      if (artist) {
-        ctx.font      = `${FSA}px monospace`;
-        ctx.fillStyle = '#6868a0';
-        ctx.fillText(artist, PAD + numColW, baseY + FS + FSA + 4);
-      }
-    });
+        // 曲名（折り返し）
+        ctx.font      = nameFont;
+        ctx.fillStyle = '#e8e8e8';
+        nameLines.forEach((line, li) => {
+          ctx.fillText(line, colX + numColW, textStartY + FS + li * (FS + 6));
+        });
+
+        // アーティスト名（折り返し）
+        if (artistLines.length > 0) {
+          const artistStartY = textStartY + nameLines.length * (FS + 6) + 4;
+          ctx.font      = artistFont;
+          ctx.fillStyle = '#6868a0';
+          artistLines.forEach((line, li) => {
+            ctx.fillText(line, colX + numColW, artistStartY + FSA + li * (FSA + 4));
+          });
+        }
+
+        curY += totalH;
+      });
+    }
 
     const a    = document.createElement('a');
     a.download = `Setlist_${new Date().toISOString().slice(0, 10)}.png`;
