@@ -224,32 +224,29 @@ export default function App() {
   const syncWithServer = useCallback(async () => {
     const res = await callGAS({ action: 'checkExternalStart' });
     const serverStart = res?.startTime ? parseInt(res.startTime, 10) : null;
-
-    // サーバ側が停止状態なら端末側も停止
+  
+    // 🔴 サーバーが停止状態 → 完全リセット
     if (!serverStart) {
-      if (isRunningRef.current || startTimeRef.current) {
-        isRunningRef.current = false;
-        startTimeRef.current = null;
-        setIsRunning(false);
-        setStartTime(null);
-        setTimerDisplay('00:00');
-      }
+      startTimeRef.current = null;
+      isRunningRef.current = false;
+  
+      setStartTime(null);
+      setIsRunning(false);
+      setTimerDisplay('00:00');
+  
       return;
     }
-
-    // サーバ側が開始状態なら同期
-    if (startTimeRef.current !== serverStart) {
-      startTimeRef.current = serverStart;
-      setStartTime(serverStart);
-    }
-    if (!isRunningRef.current) {
-      isRunningRef.current = true;
-      setIsRunning(true);
-    }
-
-    // 配信中かつサーバーにログがある時だけ同期（空文字で上書きしない）
+  
+    // 🟢 サーバーが稼働中 → 毎回強制同期（差分やめる）
+    startTimeRef.current = serverStart;
+    isRunningRef.current = true;
+  
+    setStartTime(serverStart);
+    setIsRunning(true);
+  
+    // ログ同期（空文字で上書きしない）
     const logRes = await callGAS({ action: 'getLog' });
-    if (logRes && logRes.log) {
+    if (logRes?.log) {
       setLogText(decodeURIComponent(logRes.log));
     }
   }, [callGAS]);
@@ -267,12 +264,23 @@ export default function App() {
   }, [setlist]);
 
   useEffect(() => {
-    // 配信状態（開始/停止）は全端末で同期したいので常時ポーリング
-    // マウント時に即実行 → ログイン後すぐタイマーが反映される
-    syncWithServer();
-    const syncI = setInterval(syncWithServer, 3000);
-    return () => clearInterval(syncI);
-  }, [syncWithServer]);
+    let isMounted = true;
+  
+    const init = async () => {
+      await syncWithServer(); // 🔥 初回を確実に同期
+    };
+  
+    init();
+  
+    const syncI = setInterval(() => {
+      if (isMounted) syncWithServer();
+    }, 3000);
+  
+    return () => {
+      isMounted = false;
+      clearInterval(syncI);
+    };
+  }, []); // ← 重要：依存なし
 
   useEffect(() => {
     // リクエスト一覧は管理者だけポーリング
