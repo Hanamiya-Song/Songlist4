@@ -224,29 +224,32 @@ export default function App() {
   const syncWithServer = useCallback(async () => {
     const res = await callGAS({ action: 'checkExternalStart' });
     const serverStart = res?.startTime ? parseInt(res.startTime, 10) : null;
-  
-    // 🔴 サーバーが停止状態 → 完全リセット
+
+    // サーバ側が停止状態なら端末側も停止
     if (!serverStart) {
-      startTimeRef.current = null;
-      isRunningRef.current = false;
-  
-      setStartTime(null);
-      setIsRunning(false);
-      setTimerDisplay('00:00');
-  
+      if (isRunningRef.current || startTimeRef.current) {
+        isRunningRef.current = false;
+        startTimeRef.current = null;
+        setIsRunning(false);
+        setStartTime(null);
+        setTimerDisplay('00:00');
+      }
       return;
     }
-  
-    // 🟢 サーバーが稼働中 → 毎回強制同期（差分やめる）
-    startTimeRef.current = serverStart;
-    isRunningRef.current = true;
-  
-    setStartTime(serverStart);
-    setIsRunning(true);
-  
-    // ログ同期（空文字で上書きしない）
+
+    // サーバ側が開始状態なら同期
+    if (startTimeRef.current !== serverStart) {
+      startTimeRef.current = serverStart;
+      setStartTime(serverStart);
+    }
+    if (!isRunningRef.current) {
+      isRunningRef.current = true;
+      setIsRunning(true);
+    }
+
+    // 配信中かつサーバーにログがある時だけ同期（空文字で上書きしない）
     const logRes = await callGAS({ action: 'getLog' });
-    if (logRes?.log) {
+    if (logRes && logRes.log) {
       setLogText(decodeURIComponent(logRes.log));
     }
   }, [callGAS]);
@@ -264,23 +267,12 @@ export default function App() {
   }, [setlist]);
 
   useEffect(() => {
-    let isMounted = true;
-  
-    const init = async () => {
-      await syncWithServer(); // 🔥 初回を確実に同期
-    };
-  
-    init();
-  
-    const syncI = setInterval(() => {
-      if (isMounted) syncWithServer();
-    }, 3000);
-  
-    return () => {
-      isMounted = false;
-      clearInterval(syncI);
-    };
-  }, []); // ← 重要：依存なし
+    // 配信状態（開始/停止）は全端末で同期したいので常時ポーリング
+    // マウント時に即実行 → ログイン後すぐタイマーが反映される
+    syncWithServer();
+    const syncI = setInterval(syncWithServer, 3000);
+    return () => clearInterval(syncI);
+  }, [syncWithServer]);
 
   useEffect(() => {
     // リクエスト一覧は管理者だけポーリング
@@ -933,6 +925,9 @@ export default function App() {
           </a>
           <a href="https://nana-music.com/users/10383824" target="_blank" rel="noopener noreferrer" className="menu-link" onClick={() => setIsMenuOpen(false)}>
             <Icon.Music /> nana-music
+          </a>
+          <a href="https://twitcasting.tv/0nomiya" target="_blank" rel="noopener noreferrer" className="menu-link" onClick={() => setIsMenuOpen(false)}>
+            <Icon.Music /> ツイキャス
           </a>
           {isAdmin && (
             <button
