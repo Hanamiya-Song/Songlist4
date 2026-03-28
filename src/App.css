@@ -539,6 +539,8 @@ a { color: inherit; }
 
 /* ── Log view ────────────────────────────────────────────────────────────────── */
 .view--log {
+  display: flex;
+  flex-direction: column;
   padding: 12px;
   gap: 10px;
   overflow-y: auto;
@@ -581,7 +583,7 @@ a { color: inherit; }
 .random-list {
   display: flex;
   flex-direction: column;
-  max-height: 340px;
+  height: 280px;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-y: contain;
@@ -617,8 +619,9 @@ a { color: inherit; }
 /* Log area */
 .log-area {
   width: 100%;
-  min-height: 200px;
-  max-height: 360px;
+  height: 240px;
+  min-height: 240px;
+  flex-shrink: 0;
   background: #060608;
   color: #a0a0b8;
   border: none;
@@ -626,7 +629,7 @@ a { color: inherit; }
   font-family: var(--font-mono);
   font-size: 12px;
   line-height: 1.7;
-  resize: vertical;
+  resize: none;
   outline: none;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;

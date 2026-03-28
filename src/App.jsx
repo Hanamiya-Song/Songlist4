@@ -268,6 +268,8 @@ export default function App() {
 
   useEffect(() => {
     // 配信状態（開始/停止）は全端末で同期したいので常時ポーリング
+    // マウント時に即実行 → ログイン後すぐタイマーが反映される
+    syncWithServer();
     const syncI = setInterval(syncWithServer, 3000);
     return () => clearInterval(syncI);
   }, [syncWithServer]);
@@ -505,12 +507,12 @@ export default function App() {
     const ctx = canvas.getContext('2d');
 
     const COL_SIZE  = 20;  // 1列あたりの最大曲数
-    const PAD       = 72;
-    const FS        = 30;
-    const FSA       = 20;
-    const LINE_PAD  = 20;  // エントリ上下の余白
-    const TITLE_H   = 100;
-    const COL_GAP   = 60;
+    const PAD       = 60;
+    const FS        = 22;
+    const FSA       = 15;
+    const LINE_PAD  = 12;  // エントリ上下の余白
+    const TITLE_H   = 90;
+    const COL_GAP   = 50;
 
     const numCols = Math.ceil(entries.length / COL_SIZE);
 
@@ -534,7 +536,7 @@ export default function App() {
     };
 
     // canvas幅を確定してから列幅を計算
-    canvas.width = 1080;
+    canvas.width = 1920;
     const colW   = (canvas.width - PAD * 2 - COL_GAP * (numCols - 1)) / numCols;
 
     // 番号列幅を実測
