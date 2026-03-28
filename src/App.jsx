@@ -536,7 +536,7 @@ export default function App() {
     };
 
     // canvas幅を確定してから列幅を計算
-    canvas.width = 1920;
+    canvas.width = 1720;
     const colW   = (canvas.width - PAD * 2 - COL_GAP * (numCols - 1)) / numCols;
 
     // 番号列幅を実測
