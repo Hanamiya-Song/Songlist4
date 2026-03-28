@@ -508,7 +508,7 @@ export default function App() {
 
     const COL_SIZE  = 20;  // 1列あたりの最大曲数
     const PAD       = 60;
-    const FS        = 22;
+    const FS        = 28;
     const FSA       = 15;
     const LINE_PAD  = 12;  // エントリ上下の余白
     const TITLE_H   = 90;
