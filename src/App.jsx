@@ -166,6 +166,7 @@ export default function App() {
 
   const adminPassRef                = useRef(null);
   const chatRef                     = useRef(null);
+  const isMutatingRef = useRef(false);
   const songListRef                 = useRef(null);
 
   // iOS Safari: テキスト入力でズームした後、フォーカスが残ったまま閉じると
@@ -187,8 +188,9 @@ export default function App() {
 
   // ── GAS call ───────────────────────────────────────────────────────────────
   const callGAS = useCallback(async (params, loading = false) => {
+    params.password = sessionStorage.getItem('adminPassword') || '';
     if (loading) setIsLoading(true);
-    const adminActions = ['verifyAuth','addSong','deleteRequest','startFromExternal','clearExternalStart','updateDate','checkExternalStart','getRequests'];
+    const adminActions = ['verifyAuth','addSong','deleteRequest','startFromExternal','clearExternalStart','updateDate','getRequests'];
     if (adminActions.includes(params.action)) {
       params.password = sessionStorage.getItem('adminPassword') || '';
     }
@@ -224,6 +226,7 @@ export default function App() {
 
   // ── sync / requests polling ────────────────────────────────────────────────
   const syncWithServer = useCallback(async () => {
+    if (isMutatingRef.current) return;
     const res = await callGAS({ action: 'checkExternalStart' });
     const serverStart = res?.startTime ? parseInt(res.startTime, 10) : null;
 
@@ -238,6 +241,7 @@ export default function App() {
       }
       return;
     }
+    
 
     // サーバ側が開始状態なら同期
     if (startTimeRef.current !== serverStart) {
@@ -401,51 +405,79 @@ export default function App() {
   };
 
   const toggleStream = async () => {
-    if (!isRunning) {
-      const res = await callGAS({ action: 'startFromExternal' }, true);
-      if (res?.startTime) {
-        const st = parseInt(res.startTime, 10);
-        startTimeRef.current = st;
-        setStartTime(st);
-        setIsRunning(true);
-        isRunningRef.current = true;
-        setSessionStats({ count: 0, start: st });
-        showToast('配信を開始しました！', 'success');
+    if (isMutatingRef.current) return; // 二重動作防止
+    isMutatingRef.current = true;      // ★同期ロック開始！
+  
+    try {
+      if (!isRunning) {
+        const res = await callGAS({ action: 'startFromExternal' }, true);
+        if (res?.startTime) {
+          const st = parseInt(res.startTime, 10);
+          startTimeRef.current = st;
+          setStartTime(st);
+          setIsRunning(true);
+          isRunningRef.current = true;
+          setSessionStats({ count: 0, start: st });
+          showToast('配信を開始しました！', 'success');
+        }
+      } else {
+        if (!window.confirm('配信を終了しますか？')) {
+          isMutatingRef.current = false; // キャンセル時は即ロック解除
+          return;
+        }
+  
+        // まず手元の表示を即座に消す
+        setIsRunning(false);
+        isRunningRef.current = false;
+        startTimeRef.current = null;
+        setStartTime(null);
+        setTimerDisplay('00:00');
+  
+        // GAS側に停止を伝える
+        await callGAS({ action: 'clearExternalStart' });
+        
+        localStorage.removeItem('setlist_backup');
+        setLogText('');
+        setSessionStats({ count: 0, start: null });
+        showToast('配信を終了しました', 'info');
       }
-    } else {
-      if (!window.confirm('配信を終了しますか？')) return;
-      setIsRunning(false);
-      isRunningRef.current = false;
-      startTimeRef.current = null;
-      setStartTime(null);
-      setTimerDisplay('00:00');
-      await callGAS({ action: 'clearExternalStart' });
-      localStorage.removeItem('setlist_backup');
-      setLogText('');
-      setSessionStats({ count: 0, start: null });
-      showToast('配信を終了しました', 'info');
+    } catch (e) {
+      console.error(e);
+    } finally {
+      // ★重要：GAS側の処理が反映されるまで少し待ってからロックを解除する
+      setTimeout(() => {
+        isMutatingRef.current = false;
+      }, 2000); 
+      setIsMenuOpen(false);
     }
-    setIsMenuOpen(false);
   };
 
   const executeSing = async () => {
     if (!isRunning) { showToast('先にSTARTを押してください', 'error'); return; }
+    
+    isMutatingRef.current = true; // ロック開始
+    
     const line = `${timerDisplay}  ${selectedSong.name || '無名'}\n`;
     const next = logText + line;
     setLogText(next);
     localStorage.setItem('setlist_backup', next);
     setSessionStats((p) => ({ ...p, count: p.count + 1 }));
     showToast(`♪ ${selectedSong.name} を記録しました`, 'success');
-
-    if (selectedSong.id) {
-      await callGAS({ action: 'updateDate', id: selectedSong.id });
-      setSongs((prev) => prev.map((s) => s.id === selectedSong.id ? { ...s, lastSung: new Date().toISOString().slice(0, 10) } : s));
+  
+    try {
+      if (selectedSong.id) {
+        await callGAS({ action: 'updateDate', id: selectedSong.id });
+        setSongs((prev) => prev.map((s) => s.id === selectedSong.id ? { ...s, lastSung: new Date().toISOString().slice(0, 10) } : s));
+      }
+      if (selectedSong.isFromRequest && selectedSong.requestId) {
+        await callGAS({ action: 'deleteRequest', id: selectedSong.requestId });
+        checkRequests();
+      }
+    } finally {
+      // 通信が完了するまで少し待ってからロックを外すとより安全です
+      setTimeout(() => { isMutatingRef.current = false; }, 1000);
+      closeModal(null);
     }
-    if (selectedSong.isFromRequest && selectedSong.requestId) {
-      await callGAS({ action: 'deleteRequest', id: selectedSong.requestId });
-      checkRequests();
-    }
-    closeModal(null);
   };
 
   const addToSetlist = () => {
